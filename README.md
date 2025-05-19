@@ -103,6 +103,8 @@ The GUI provides:
 - Optional custom base name for output files
 - Status updates and error reporting
 
+The GUI now includes improved widget handling to prevent errors related to deleted widgets (such as 'wrapped C/C++ object of type QSpinBox has been deleted'), making the interface more robust when switching sampling methods.
+
 ![Samplr Desktop UI](docs/samplr_gui.png)
 
 ## Development

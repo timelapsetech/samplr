@@ -102,8 +102,10 @@ class SamplrUI(QWidget):
         while self.method_options_layout.count():
             item = self.method_options_layout.takeAt(0)
             widget = item.widget()
-            if widget:
+            if widget and widget not in [self.nth_spin, self.target_time_edit, self.start_time_edit, self.end_time_edit]:
                 widget.deleteLater()
+            elif widget:
+                widget.setParent(None)
         method = self.method_combo.currentText()
         if method == "Every Nth Image":
             self.method_options_layout.addWidget(QLabel("Sample every Nth image:"))
