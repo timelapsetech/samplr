@@ -107,6 +107,69 @@ The GUI now includes improved widget handling to prevent errors related to delet
 
 ![Samplr Desktop UI](docs/samplr_gui.png)
 
+## macOS App (PyInstaller)
+
+Build a standalone `Samplr.app` you can install without Python on the machine:
+
+```bash
+./scripts/build-macos.sh
+```
+
+Or manually:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -e ".[gui,packaging]"
+pyinstaller samplr.spec
+```
+
+The app bundle is written to `dist/Samplr.app`. Install it with:
+
+```bash
+cp -r dist/Samplr.app /Applications/
+open /Applications/Samplr.app
+```
+
+On first launch, macOS may block the unsigned app. Right-click **Samplr** in Applications, choose **Open**, then confirm **Open**.
+
+### Publish a GitHub Release (local build)
+
+A normal `git push` only uploads source code. The built app stays on your machine (`dist/` is gitignored), so publishing a release is a separate step that uploads the local `.app` to [GitHub Releases](https://github.com/timelapsetech/samplr/releases).
+
+One-time setup:
+
+```bash
+brew install gh
+gh auth login
+```
+
+When you are ready to ship a version:
+
+1. Bump `samplr/__init__.py` and document changes in `CHANGELOG.md`
+2. Commit and push your changes
+3. Run:
+
+```bash
+./scripts/release-macos.sh
+```
+
+That script will:
+
+- Build `dist/Samplr.app` locally (PyInstaller)
+- Zip it as `dist/Samplr-<version>-macos.zip`
+- Create tag `v<version>` from the current commit (for example `v0.2.0`)
+- Push the branch and tag to GitHub
+- Create or update the GitHub Release with the zip attached
+
+Release notes are taken from the matching `CHANGELOG.md` section.
+
+To publish an app you already built:
+
+```bash
+SKIP_BUILD=1 ./scripts/release-macos.sh
+```
+
 ## Development
 
 ### Setup

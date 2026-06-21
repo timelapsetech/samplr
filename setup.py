@@ -1,8 +1,10 @@
 from setuptools import setup, find_packages
 
+from samplr import __version__
+
 setup(
     name="samplr",
-    version="0.1.1",
+    version=__version__,
     packages=find_packages(),
     install_requires=[
         "Pillow>=9.0.0",
@@ -18,6 +20,9 @@ setup(
         ],
         "gui": [
             "PyQt6>=6.6.0",
+        ],
+        "packaging": [
+            "pyinstaller>=6.0.0",
         ],
     },
     entry_points={
