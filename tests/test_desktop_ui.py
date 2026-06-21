@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QPushButton, QComboBox, QLineEdit
+from PyQt6.QtWidgets import QApplication, QPushButton, QComboBox, QLineEdit, QCheckBox
 from samplr.desktop_ui import SamplrUI
 
 @pytest.fixture(scope="session")
@@ -153,3 +153,23 @@ def test_run_sampler_closest_to_time(window, qtbot, tmp_path):
         timeout=5000,
     )
     assert "Copied" in window.status_label.text()
+
+
+def test_black_frame_controls_hidden_by_default(window):
+    """Tolerance controls appear only when remove-black-frames is enabled."""
+    checkbox = window.findChild(QCheckBox, "remove_black_frames_check")
+    tolerance_edit = window.findChild(QLineEdit, "black_tolerance_edit")
+    assert checkbox is not None
+    assert tolerance_edit is not None
+    assert not checkbox.isChecked()
+    assert not tolerance_edit.isVisible()
+
+
+def test_black_frame_tolerance_validation(window):
+    """Invalid tolerance values are rejected."""
+    window.black_tolerance_edit.setText("0")
+    assert window._parse_black_frame_tolerance() is None
+    window.black_tolerance_edit.setText("101")
+    assert window._parse_black_frame_tolerance() is None
+    window.black_tolerance_edit.setText("95.5")
+    assert window._parse_black_frame_tolerance() == 95.5

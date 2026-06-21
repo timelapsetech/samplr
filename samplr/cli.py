@@ -16,6 +16,19 @@ def main():
     parser.add_argument("source_dir", help="Source directory containing images")
     parser.add_argument("dest_dir", help="Destination directory for sampled images")
     parser.add_argument("--base-name", help="Base name for output files (default: derived from first image, replacing 'CO' with 'SM')")
+    parser.add_argument(
+        "--remove-black-frames",
+        action="store_true",
+        help="Exclude frames that are mostly black before copying",
+    )
+    parser.add_argument(
+        "--black-frame-tolerance",
+        type=float,
+        default=95.0,
+        metavar="PCT",
+        help="When removing black frames, exclude images with at least this "
+        "percentage of near-black pixels (default: 95)",
+    )
     
     # Create a group for mutually exclusive sampling methods
     group = parser.add_mutually_exclusive_group(required=True)
@@ -55,6 +68,15 @@ def main():
             selected_images = sampler.sample_every_nth_in_time_range(n, start_time, end_time)
         except ValueError as e:
             parser.error(f"Invalid time range format: {e}")
+
+    if args.remove_black_frames:
+        if args.black_frame_tolerance <= 0 or args.black_frame_tolerance > 100:
+            parser.error(
+                "Black frame tolerance must be greater than 0 and at most 100."
+            )
+        selected_images = sampler.filter_black_frames(
+            selected_images, args.black_frame_tolerance
+        )
 
     # Copy and rename selected images
     sampler.copy_and_rename(selected_images)

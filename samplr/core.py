@@ -19,6 +19,10 @@ from dateutil.parser import parse
 # Supported image extensions
 SUPPORTED_EXTENSIONS: Set[str] = {'.jpg', '.jpeg', '.png', '.gif'}
 
+# Black-frame detection uses a small downsampled grayscale histogram for speed.
+BLACK_FRAME_SAMPLE_SIZE = 64
+BLACK_PIXEL_LUMINANCE_THRESHOLD = 10
+
 
 class DirectoryValidationError(ValueError):
     """Raised when source and destination directories are unsafe to use together."""
@@ -228,6 +232,68 @@ class ImageSampler:
         # Calculate required digits based on max number and new files
         required_digits = max(4, len(str(max_num + len(existing_files))))
         return required_digits
+
+    def _black_pixel_fraction(self, image_path: Path) -> float:
+        """
+        Estimate the fraction of near-black pixels in an image.
+
+        Uses JPEG draft decoding when possible and a downsampled grayscale
+        histogram so large batches stay fast without reading every full pixel.
+        """
+        with Image.open(image_path) as img:
+            img.draft("L", (BLACK_FRAME_SAMPLE_SIZE, BLACK_FRAME_SAMPLE_SIZE))
+            gray = img.convert("L")
+            if (
+                gray.width > BLACK_FRAME_SAMPLE_SIZE
+                or gray.height > BLACK_FRAME_SAMPLE_SIZE
+            ):
+                gray.thumbnail(
+                    (BLACK_FRAME_SAMPLE_SIZE, BLACK_FRAME_SAMPLE_SIZE),
+                    Image.Resampling.BILINEAR,
+                )
+
+            histogram = gray.histogram()
+            black_count = sum(histogram[: BLACK_PIXEL_LUMINANCE_THRESHOLD + 1])
+            total = gray.width * gray.height
+            if total == 0:
+                return 0.0
+            return black_count / total
+
+    def is_black_frame(self, image_path: Path, tolerance_percent: float) -> bool:
+        """
+        Return True if at least tolerance_percent of the frame is near-black.
+        """
+        fraction = self._black_pixel_fraction(image_path)
+        return fraction * 100.0 >= tolerance_percent
+
+    def filter_black_frames(
+        self, images: List[Path], tolerance_percent: float
+    ) -> List[Path]:
+        """
+        Remove frames that are at least tolerance_percent near-black.
+
+        Args:
+            images: Candidate image paths
+            tolerance_percent: Percentage of frame that must be black to exclude
+                the image (0 exclusive through 100 inclusive)
+
+        Returns:
+            Paths that are not considered black frames
+        """
+        if tolerance_percent <= 0 or tolerance_percent > 100:
+            raise ValueError(
+                "Black frame tolerance must be greater than 0 and at most 100."
+            )
+
+        kept: List[Path] = []
+        total = len(images)
+        for index, img_path in enumerate(images, start=1):
+            self._report_progress(
+                index, total, f"Checking black frames: {img_path.name}"
+            )
+            if not self.is_black_frame(img_path, tolerance_percent):
+                kept.append(img_path)
+        return kept
 
     def sample_every_nth(self, n: int) -> List[Path]:
         """

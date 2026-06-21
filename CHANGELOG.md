@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-06-21
+
+### Added
+
+- Optional black frame removal after sampling, with a configurable tolerance (percentage of near-black pixels required to exclude a frame)
+- Fast black-frame detection using downsampled grayscale histograms and JPEG draft decoding for large batches
+- CLI flags `--remove-black-frames` and `--black-frame-tolerance` (default: 95)
+- Desktop GUI checkbox to remove black frames, with a tolerance field shown when enabled
+
 ## [0.2.0] - 2026-06-21
 
 ### Added
@@ -42,5 +51,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sequential output renaming with optional custom base name
 - Development tooling: pytest, black, mypy, and ruff
 
+[0.3.0]: https://github.com/timelapsetech/samplr/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/timelapsetech/samplr/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/timelapsetech/samplr/releases/tag/v0.1.0

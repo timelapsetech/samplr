@@ -11,6 +11,7 @@ A Python tool for sampling images based on various criteria. Samplr can help you
 - Sample every Nth image from a directory
 - Sample images closest to a specific time each day
 - Sample every Nth image within a specified time range
+- Optionally remove black frames (camera-off or lens-cap shots) with a configurable tolerance
 - Automatically rename selected images sequentially
 - Preserves original files while creating copies in the destination directory
 - Validates that source and destination are separate folders to protect originals
@@ -74,6 +75,18 @@ samplr /path/to/source /path/to/destination --every-nth 5 --base-name "my_images
 
 This will create files like "my_images_0001.jpg", "my_images_0002.jpg", etc.
 
+### Remove Black Frames
+
+Long-term time lapse sequences often include black frames when the camera is off or the lens is covered. Samplr can drop those after sampling, before copying to the destination.
+
+```bash
+samplr /path/to/source /path/to/destination --every-nth 5 --remove-black-frames --black-frame-tolerance 95
+```
+
+`--black-frame-tolerance` is the percentage of the frame that must be near-black for the image to be excluded (default: 95). Use a higher value (for example 100) to remove only fully black frames; use a lower value to catch partially black frames as well.
+
+Black-frame checks run only on the sampled subset, not every file in the source folder. Detection uses a fast downsampled grayscale histogram so large batches stay responsive.
+
 ## Notes
 
 - Time should be specified in 24-hour format (HH:MM)
@@ -109,6 +122,7 @@ The GUI provides:
 - Dropdown menu for sampling method selection
 - Input fields for sampling parameters (Nth value, time ranges); N accepts any positive whole number (e.g. 100 or 1000)
 - Optional custom base name for output files
+- Optional black frame removal with configurable tolerance (shown when enabled)
 - Progress bar and per-file status while sampling runs
 - Validation that source and destination are safe, separate folders
 - Status updates and error reporting
@@ -173,7 +187,7 @@ That script will:
 
 - Build `dist/Samplr.app` locally (PyInstaller)
 - Zip it as `dist/Samplr-<version>-macos.zip`
-- Create tag `v<version>` from the current commit (for example `v0.2.0`)
+- Create tag `v<version>` from the current commit (for example `v0.3.0`)
 - Push the branch and tag to GitHub
 - Create or update the GitHub Release with the zip attached
 

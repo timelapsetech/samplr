@@ -4,7 +4,7 @@ from datetime import time, datetime
 from typing import Optional
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
-    QFileDialog, QComboBox, QTimeEdit, QMessageBox, QProgressBar
+    QFileDialog, QComboBox, QTimeEdit, QMessageBox, QProgressBar, QCheckBox
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QIcon
@@ -41,6 +41,8 @@ class SamplerWorker(QThread):
         target_time: Optional[time],
         start_time: Optional[time],
         end_time: Optional[time],
+        remove_black_frames: bool,
+        black_frame_tolerance: float,
     ):
         super().__init__()
         self.src = src
@@ -51,6 +53,8 @@ class SamplerWorker(QThread):
         self.target_time = target_time
         self.start_time = start_time
         self.end_time = end_time
+        self.remove_black_frames = remove_black_frames
+        self.black_frame_tolerance = black_frame_tolerance
 
     def run(self):
         try:
@@ -70,6 +74,10 @@ class SamplerWorker(QThread):
                 )
             else:
                 selected = []
+            if self.remove_black_frames:
+                selected = sampler.filter_black_frames(
+                    selected, self.black_frame_tolerance
+                )
             sampler.copy_and_rename(selected)
             self.sampling_complete.emit(len(selected), str(self.dst))
         except Exception as exc:
@@ -160,6 +168,25 @@ class SamplrUI(QWidget):
         layout.addLayout(self.method_options_layout)
         self.update_method_options()
 
+        # Black frame filtering
+        self.remove_black_frames_check = QCheckBox("Remove black frames")
+        self.remove_black_frames_check.setObjectName("remove_black_frames_check")
+        self.remove_black_frames_check.toggled.connect(
+            self.update_black_frame_options
+        )
+        layout.addWidget(self.remove_black_frames_check)
+
+        black_tolerance_layout = QHBoxLayout()
+        self.black_tolerance_label = QLabel("Black frame tolerance (%):")
+        self.black_tolerance_edit = QLineEdit()
+        self.black_tolerance_edit.setObjectName("black_tolerance_edit")
+        self.black_tolerance_edit.setText("95")
+        self.black_tolerance_edit.setPlaceholderText("e.g. 95")
+        black_tolerance_layout.addWidget(self.black_tolerance_label)
+        black_tolerance_layout.addWidget(self.black_tolerance_edit)
+        layout.addLayout(black_tolerance_layout)
+        self.update_black_frame_options(False)
+
         # Run button
         self.run_btn = QPushButton("Run Samplr")
         self.run_btn.setObjectName("run_btn")
@@ -214,6 +241,10 @@ class SamplrUI(QWidget):
         self.end_time_label.setVisible(show_range)
         self.end_time_edit.setVisible(show_range)
 
+    def update_black_frame_options(self, enabled: bool):
+        self.black_tolerance_label.setVisible(enabled)
+        self.black_tolerance_edit.setVisible(enabled)
+
     def _set_running(self, running: bool):
         self.run_btn.setEnabled(not running)
         self.run_btn.setText("Running..." if running else "Run Samplr")
@@ -262,6 +293,18 @@ class SamplrUI(QWidget):
             return None
         value = int(text)
         if value < 1:
+            return None
+        return value
+
+    def _parse_black_frame_tolerance(self) -> Optional[float]:
+        text = self.black_tolerance_edit.text().strip()
+        if not text:
+            return None
+        try:
+            value = float(text)
+        except ValueError:
+            return None
+        if value <= 0 or value > 100:
             return None
         return value
 
@@ -317,10 +360,28 @@ class SamplrUI(QWidget):
             start_time = time(start.hour(), start.minute())
             end_time = time(end.hour(), end.minute())
 
+        remove_black_frames = self.remove_black_frames_check.isChecked()
+        black_frame_tolerance = 95.0
+        if remove_black_frames:
+            parsed_tolerance = self._parse_black_frame_tolerance()
+            if parsed_tolerance is None:
+                QMessageBox.critical(
+                    self,
+                    "Error",
+                    "Enter a black frame tolerance greater than 0 and at most 100.",
+                )
+                self.status_label.setText(
+                    "<span style='color:red'>Error: Enter a black frame tolerance "
+                    "greater than 0 and at most 100.</span>"
+                )
+                return
+            black_frame_tolerance = parsed_tolerance
+
         self._set_running(True)
         self.worker = SamplerWorker(
             src, dst, base_name, method,
             nth, target_time, start_time, end_time,
+            remove_black_frames, black_frame_tolerance,
         )
         self.worker.progress.connect(self._on_progress)
         self.worker.sampling_complete.connect(self._on_finished)

@@ -167,4 +167,49 @@ def test_image_sampler_rejects_same_directory(temp_dirs):
     """ImageSampler refuses to initialize with identical source and destination."""
     source_dir, _ = temp_dirs
     with pytest.raises(DirectoryValidationError, match="different directories"):
-        ImageSampler(source_dir, source_dir) 
+        ImageSampler(source_dir, source_dir)
+
+
+def test_filter_black_frames_removes_mostly_black(temp_dirs):
+    """Frames at or above the tolerance threshold are excluded."""
+    source_dir, dest_dir = temp_dirs
+
+    red_path = source_dir / "CO_red.jpg"
+    black_path = source_dir / "CO_black.jpg"
+    Image.new("RGB", (200, 200), color="red").save(red_path)
+    Image.new("RGB", (200, 200), color=(0, 0, 0)).save(black_path)
+
+    sampler = ImageSampler(source_dir, dest_dir)
+    kept = sampler.filter_black_frames(
+        [red_path, black_path], tolerance_percent=95.0
+    )
+
+    assert kept == [red_path]
+
+
+def test_filter_black_frames_keeps_partially_black(temp_dirs):
+    """Frames below the tolerance threshold are kept."""
+    source_dir, dest_dir = temp_dirs
+
+    mixed_path = source_dir / "CO_mixed.jpg"
+    img = Image.new("RGB", (100, 100), color="white")
+    for x in range(40):
+        for y in range(100):
+            img.putpixel((x, y), (0, 0, 0))
+    img.save(mixed_path)
+
+    sampler = ImageSampler(source_dir, dest_dir)
+    kept = sampler.filter_black_frames([mixed_path], tolerance_percent=95.0)
+
+    assert kept == [mixed_path]
+
+
+def test_filter_black_frames_rejects_invalid_tolerance(temp_dirs):
+    """Tolerance must be greater than 0 and at most 100."""
+    source_dir, dest_dir = temp_dirs
+    sampler = ImageSampler(source_dir, dest_dir)
+
+    with pytest.raises(ValueError, match="greater than 0"):
+        sampler.filter_black_frames([], tolerance_percent=0)
+    with pytest.raises(ValueError, match="greater than 0"):
+        sampler.filter_black_frames([], tolerance_percent=101) 
