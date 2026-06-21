@@ -77,6 +77,8 @@ MANIFEST
 # PyInstaller
 *.manifest
 !samplr.spec
+assets/samplr_icon.icns
+assets/*.iconset/
 
 # Installer logs
 pip-log.txt

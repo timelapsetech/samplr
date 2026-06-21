@@ -14,6 +14,7 @@ source venv/bin/activate
 pip install -q --upgrade pip
 pip install -q -e ".[gui,packaging]"
 
+"$ROOT/scripts/generate-macos-icon.sh"
 pyinstaller --noconfirm samplr.spec
 
 echo ""

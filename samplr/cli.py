@@ -1,7 +1,7 @@
 import argparse
 from datetime import time
 from pathlib import Path
-from .core import ImageSampler
+from .core import DirectoryValidationError, ImageSampler, validate_sample_directories
 
 def parse_time(time_str: str) -> time:
     """Parse time string in HH:MM format."""
@@ -33,6 +33,11 @@ def main():
     
     if not source_dir.exists():
         parser.error(f"Source directory does not exist: {source_dir}")
+
+    try:
+        validate_sample_directories(source_dir, dest_dir)
+    except DirectoryValidationError as exc:
+        parser.error(str(exc))
     
     # Create sampler instance
     sampler = ImageSampler(source_dir, dest_dir, base_name=args.base_name)

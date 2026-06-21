@@ -9,13 +9,67 @@ import os
 import shutil
 from datetime import datetime, time
 from pathlib import Path
-from typing import List, Optional, Tuple, Set
+from typing import Callable, List, Optional, Set
+
+ProgressCallback = Callable[[int, int, str], None]
 
 from PIL import Image
 from dateutil.parser import parse
 
 # Supported image extensions
 SUPPORTED_EXTENSIONS: Set[str] = {'.jpg', '.jpeg', '.png', '.gif'}
+
+
+class DirectoryValidationError(ValueError):
+    """Raised when source and destination directories are unsafe to use together."""
+
+
+def _is_descendant(path: Path, ancestor: Path) -> bool:
+    """Return True if path is a strict descendant of ancestor."""
+    path_resolved = path.resolve()
+    ancestor_resolved = ancestor.resolve()
+    if path_resolved == ancestor_resolved:
+        return False
+    try:
+        path_resolved.relative_to(ancestor_resolved)
+        return True
+    except ValueError:
+        return False
+
+
+def validate_sample_directories(source_dir: Path, dest_dir: Path) -> None:
+    """
+    Validate that source and destination directories are safe to use together.
+
+    Raises:
+        DirectoryValidationError: If directories are missing or would put originals at risk.
+    """
+    source = source_dir.expanduser().resolve()
+    dest = dest_dir.expanduser().resolve()
+
+    if not source.exists():
+        raise DirectoryValidationError(f"Source directory does not exist: {source_dir}")
+    if not source.is_dir():
+        raise DirectoryValidationError(f"Source path is not a directory: {source_dir}")
+
+    if source == dest:
+        raise DirectoryValidationError(
+            "Source and destination must be different directories. "
+            "Choose a separate folder for sampled images so originals are not at risk."
+        )
+
+    if _is_descendant(dest, source):
+        raise DirectoryValidationError(
+            "Destination cannot be inside the source directory. "
+            "Choose a folder outside your image library."
+        )
+
+    if _is_descendant(source, dest):
+        raise DirectoryValidationError(
+            "Source cannot be inside the destination directory. "
+            "Choose a source folder that is separate from prior output."
+        )
+
 
 class ImageSampler:
     """
@@ -26,7 +80,13 @@ class ImageSampler:
     and copy them to a destination directory with sequential naming.
     """
 
-    def __init__(self, source_dir: str, dest_dir: str, base_name: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        source_dir: str,
+        dest_dir: str,
+        base_name: Optional[str] = None,
+        progress_callback: Optional[ProgressCallback] = None,
+    ) -> None:
         """
         Initialize the ImageSampler.
 
@@ -34,12 +94,44 @@ class ImageSampler:
             source_dir: Path to the source directory containing images
             dest_dir: Path to the destination directory for sampled images
             base_name: Optional base name for output files. If None, derived from first image
+            progress_callback: Optional callback(current, total, message) for progress updates
         """
-        self.source_dir = Path(source_dir)
-        self.dest_dir = Path(dest_dir)
+        self.source_dir = Path(source_dir).expanduser()
+        self.dest_dir = Path(dest_dir).expanduser()
+        validate_sample_directories(self.source_dir, self.dest_dir)
         self.dest_dir.mkdir(parents=True, exist_ok=True)
         self.base_name = base_name
+        self.progress_callback = progress_callback
+
+    def _report_progress(self, current: int, total: int, message: str) -> None:
+        if self.progress_callback is not None:
+            self.progress_callback(current, total, message)
         
+    def _parse_exif_datetime(self, value: object) -> Optional[datetime]:
+        """
+        Parse an EXIF datetime string.
+
+        EXIF uses ``YYYY:MM:DD HH:MM:SS`` (colons in the date). dateutil's parser
+        mishandles that format and substitutes today's date, so we parse EXIF
+        literally first and only fall back to dateutil for other formats.
+        """
+        if value is None:
+            return None
+        if isinstance(value, bytes):
+            value = value.decode("utf-8", errors="replace")
+        text = str(value).strip()
+        if not text:
+            return None
+        for fmt in ("%Y:%m:%d %H:%M:%S", "%Y:%m:%d %H:%M"):
+            try:
+                return datetime.strptime(text, fmt)
+            except ValueError:
+                continue
+        try:
+            return parse(text)
+        except (ValueError, TypeError):
+            return None
+
     def _get_image_datetime(self, image_path: Path) -> Optional[datetime]:
         """
         Extract datetime from image metadata.
@@ -57,8 +149,10 @@ class ImageSampler:
                     # Try to get datetime from EXIF data
                     for tag_id in [36867, 306]:  # DateTimeOriginal, DateTime
                         if tag_id in exif:
-                            return parse(exif[tag_id])
-        except (AttributeError, KeyError, TypeError, ValueError):
+                            dt = self._parse_exif_datetime(exif[tag_id])
+                            if dt is not None:
+                                return dt
+        except (AttributeError, KeyError, TypeError, ValueError, OSError):
             pass
         
         # Fallback to file modification time
@@ -145,7 +239,7 @@ class ImageSampler:
         Returns:
             List of paths to selected images
         """
-        image_files = sorted([f for f in self.source_dir.glob("*") 
+        image_files = sorted([f for f in self.source_dir.glob("*")
                             if f.suffix.lower() in SUPPORTED_EXTENSIONS])
         return image_files[::n]
 
@@ -159,12 +253,14 @@ class ImageSampler:
         Returns:
             List of paths to selected images
         """
-        image_files = [f for f in self.source_dir.glob("*") 
+        image_files = [f for f in self.source_dir.glob("*")
                       if f.suffix.lower() in SUPPORTED_EXTENSIONS]
-        
+        total = len(image_files)
+
         # Group images by date
         images_by_date = {}
-        for img_path in image_files:
+        for index, img_path in enumerate(image_files, start=1):
+            self._report_progress(index, total, f"Reading metadata: {img_path.name}")
             dt = self._get_image_datetime(img_path)
             if dt:
                 date_key = dt.date()
@@ -198,12 +294,14 @@ class ImageSampler:
         Returns:
             List of paths to selected images
         """
-        image_files = [f for f in self.source_dir.glob("*") 
+        image_files = [f for f in self.source_dir.glob("*")
                       if f.suffix.lower() in SUPPORTED_EXTENSIONS]
-        
+        total = len(image_files)
+
         # Filter images within time range
         filtered_images = []
-        for img_path in image_files:
+        for index, img_path in enumerate(image_files, start=1):
+            self._report_progress(index, total, f"Reading metadata: {img_path.name}")
             dt = self._get_image_datetime(img_path)
             if dt and self._is_within_time_range(dt, start_time, end_time):
                 filtered_images.append(img_path)
@@ -237,7 +335,27 @@ class ImageSampler:
                 pass
         
         # Copy and rename files
-        for img_path in selected_images:
+        source_resolved = self.source_dir.resolve()
+        source_files = {
+            path.resolve()
+            for path in source_resolved.iterdir()
+            if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS
+        }
+        total = len(selected_images)
+        for index, img_path in enumerate(selected_images, start=1):
+            src_path = img_path.resolve()
+            if src_path.parent != source_resolved:
+                raise DirectoryValidationError(
+                    f"Refusing to copy file outside the source directory: {img_path.name}"
+                )
+
             new_name = f"{base_name}_{next_num:0{required_digits}d}{suffix}"
-            shutil.copy2(img_path, self.dest_dir / new_name)
+            dest_path = (self.dest_dir / new_name).resolve()
+            if dest_path == src_path or dest_path in source_files:
+                raise DirectoryValidationError(
+                    f"Refusing to overwrite a file in the source directory: {dest_path.name}"
+                )
+
+            self._report_progress(index, total, f"Copying: {img_path.name} → {new_name}")
+            shutil.copy2(img_path, dest_path)
             next_num += 1 

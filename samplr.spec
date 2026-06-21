@@ -1,19 +1,32 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec for the Samplr macOS desktop app.
 # Build: pyinstaller samplr.spec
+#
+# PyQt6 hooks (QtWidgets/QtCore/QtGui) collect only the frameworks this app uses.
+# Avoid collect_all("PyQt6") — it pulls optional plugins (3D, WebEngine, SQL, QML)
+# that trigger harmless "Library not found" warnings and inflate the bundle.
 
-from PyInstaller.utils.hooks import collect_all
+from pathlib import Path
 
 from samplr import __version__
 
-pyqt6_datas, pyqt6_binaries, pyqt6_hiddenimports = collect_all("PyQt6")
+SPEC_DIR = Path(SPECPATH)
+LOGO = SPEC_DIR / "assets" / "samplr_logo.png"
+ICON = SPEC_DIR / "assets" / "samplr_icon.icns"
+
+if not ICON.is_file():
+    raise SystemExit(
+        f"Missing {ICON}. Run ./scripts/generate-macos-icon.sh or ./scripts/build-macos.sh."
+    )
+
+app_datas = [(str(LOGO), "assets")]
 
 a = Analysis(
     ["samplr/desktop_ui.py"],
     pathex=[],
-    binaries=pyqt6_binaries,
-    datas=pyqt6_datas,
-    hiddenimports=pyqt6_hiddenimports + ["samplr.core"],
+    binaries=[],
+    datas=app_datas,
+    hiddenimports=["samplr.core"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -52,7 +65,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name="Samplr.app",
-    icon=None,
+    icon=str(ICON),
     bundle_identifier="com.timelapsetech.samplr",
     version=__version__,
 )

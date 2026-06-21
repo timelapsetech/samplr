@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/samplr_logo.png" alt="Samplr logo" width="128">
+</p>
+
 # Samplr
 
 A Python tool for sampling images based on various criteria. Samplr can help you select and organize images from a source directory based on different sampling strategies.
@@ -9,6 +13,7 @@ A Python tool for sampling images based on various criteria. Samplr can help you
 - Sample every Nth image within a specified time range
 - Automatically rename selected images sequentially
 - Preserves original files while creating copies in the destination directory
+- Validates that source and destination are separate folders to protect originals
 - Customizable output file naming
 
 ## Why this script?
@@ -24,7 +29,7 @@ This is primarily used for long-term time lapse image sampling, but use it how y
 pip install .
 ```
 
-If you don't want to install, that's fine.  You can just run it on the command like like this:
+If you don't want to install, that's fine. You can just run it on the command line like this:
 ```bash
 python -m samplr.cli /path/to/source /path/to/destination --every-nth 5
 ```
@@ -74,7 +79,10 @@ This will create files like "my_images_0001.jpg", "my_images_0002.jpg", etc.
 - Time should be specified in 24-hour format (HH:MM)
 - Supported image formats: JPG, JPEG, PNG, GIF
 - The tool uses EXIF data when available, falling back to file modification time if EXIF data is not present
-- Images in the destination directory will be renamed sequentially (e.g., image_0001.jpg, image_0002.jpg, etc.)
+- “Closest to time each day” relies on accurate per-image timestamps from EXIF or file modification time
+- Source and destination must be different directories; neither folder can be inside the other
+- Samplr only copies files — it never moves, renames, or deletes images in the source directory
+- Images in the destination directory will be renamed sequentially (e.g., `SM_0001.jpg`, `SM_0002.jpg`, etc.)
 
 ## Requirements
 
@@ -99,8 +107,10 @@ Samplr also includes a modern desktop GUI for easy image sampling. To use it:
 The GUI provides:
 - File pickers for source and destination directories
 - Dropdown menu for sampling method selection
-- Input fields for sampling parameters (Nth value, time ranges)
+- Input fields for sampling parameters (Nth value, time ranges); N accepts any positive whole number (e.g. 100 or 1000)
 - Optional custom base name for output files
+- Progress bar and per-file status while sampling runs
+- Validation that source and destination are safe, separate folders
 - Status updates and error reporting
 
 The GUI now includes improved widget handling to prevent errors related to deleted widgets (such as 'wrapped C/C++ object of type QSpinBox has been deleted'), making the interface more robust when switching sampling methods.
@@ -115,16 +125,19 @@ Build a standalone `Samplr.app` you can install without Python on the machine:
 ./scripts/build-macos.sh
 ```
 
+That script installs dependencies, generates the macOS app icon from `assets/samplr_logo.png`, and runs PyInstaller.
+
 Or manually:
 
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 pip install -e ".[gui,packaging]"
+./scripts/generate-macos-icon.sh
 pyinstaller samplr.spec
 ```
 
-The app bundle is written to `dist/Samplr.app`. Install it with:
+The app bundle is written to `dist/Samplr.app` (typically ~90–100 MB). Install it with:
 
 ```bash
 cp -r dist/Samplr.app /Applications/
@@ -132,6 +145,8 @@ open /Applications/Samplr.app
 ```
 
 On first launch, macOS may block the unsigned app. Right-click **Samplr** in Applications, choose **Open**, then confirm **Open**.
+
+PyInstaller may print a `user32` warning on macOS when analyzing dependencies; that is harmless. The spec file intentionally bundles only the Qt modules the app uses, which keeps the build output smaller and avoids dozens of optional Qt plugin warnings.
 
 ### Publish a GitHub Release (local build)
 
